@@ -1,0 +1,13 @@
+pluginManagement {
+    plugins {
+        id 'fabric-loom' version "${loom_version}"
+    }
+    repositories {
+        maven { url = 'https://maven.fabricmc.net/' }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'crystal-utility'
+include 'wvlib', 'doorc-launcher'

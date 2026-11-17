@@ -1,0 +1,19 @@
+.gradle/
+**/.gradle/
+build/
+**/build/
+bin/
+run/
+**/run/
+.vscode/
+/.github/modernize/
+/assets/
+/bg.gif
+/LowOnFire v26.2§8.zip
+/Side Shield.zip
+/Small Totem.zip
+/опис_клієнта_промт.txt
+*.log
+*.tmp
+*.exe
+*.exe.sha256

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "crystalutility",
+  "version": "${version}",
+  "name": "wvDoorClient",
+  "description": "Client-side crystal rendering optimization, configurable hitboxes, and desktop media controls.",
+  "authors": ["wvDoorClient"],
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.crystalutility.CrystalUtilityClient"],
+    "modmenu": ["dev.crystalutility.config.ModMenuIntegration"]
+  },
+  "mixins": [
+    "crystalutility.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*",
+    "modmenu": ">=17.0.0",
+    "wvlib": ">=${wvlib_version}"
+  }
+}

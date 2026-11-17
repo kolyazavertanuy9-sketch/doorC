@@ -1,0 +1,169 @@
+plugins {
+    id 'application'
+}
+
+group = rootProject.group
+def launcherVersion = providers.gradleProperty('launcherVersion')
+        .orElse(providers.gradleProperty('launcher_version').orElse(rootProject.version.toString()))
+        .get()
+def launcherReleaseRepo = providers.gradleProperty('launcherReleaseRepo')
+        .orElse('kolyazavertanuy9-sketch/doorC')
+        .get()
+version = launcherVersion
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.google.code.gson:gson:2.13.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'dev.wvdoor.launcher.LauncherApp'
+    applicationDefaultJvmArgs = [
+            "-Ddoorc.launcher.version=${launcherVersion}",
+            "-Ddoorc.launcher.githubRepo=${launcherReleaseRepo}"
+    ]
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+def doorcPayload = layout.buildDirectory.dir('generated/doorc-payload')
+
+tasks.register('copyDoorCPayload', Copy) {
+    dependsOn ':jar', ':wvlib:jar'
+    from(rootProject.layout.buildDirectory.file("libs/${rootProject.property('archives_base_name')}-${rootProject.property('mod_version')}.jar")) {
+        into 'mods'
+        rename { 'wvDoorClient.jar' }
+    }
+    from(rootProject.project(':wvlib').layout.buildDirectory.file("libs/WVlib-${rootProject.property('wvlib_version')}.jar")) {
+        into 'mods'
+        rename { 'WVlib.jar' }
+    }
+    into doorcPayload
+}
+
+sourceSets.main.resources.srcDir(doorcPayload)
+tasks.named('processResources') {
+    dependsOn tasks.named('copyDoorCPayload')
+    from(rootProject.file('src/main/resources/assets/crystalutility/textures/gui/backgrounds/world_2.png')) {
+        into 'launcher'
+        rename { 'hero.png' }
+    }
+    from(rootProject.file('logo.png')) {
+        into 'launcher'
+    }
+}
+
+tasks.register('launcherFatJar', Jar) {
+    dependsOn tasks.named('classes')
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.main.output
+    from {
+        configurations.runtimeClasspath.collect { entry ->
+            entry.isDirectory() ? entry : zipTree(entry)
+        }
+    }
+    manifest {
+        attributes('Main-Class': application.mainClass.get())
+    }
+}
+
+def launcherInputDir = layout.buildDirectory.dir('launcher-input')
+def launcherRuntimeDir = layout.buildDirectory.dir('launcher-runtime')
+def launcherAppImageDir = layout.buildDirectory.dir('launcher-app-image')
+def launcherPackageDir = layout.buildDirectory.dir('launcher-package')
+def launcherIcon = layout.projectDirectory.file('src/main/resources/launcher-icon.ico')
+def jpackageExecutable = new File(System.getProperty('java.home'), 'bin/jpackage.exe')
+def jlinkExecutable = new File(System.getProperty('java.home'), 'bin/jlink.exe')
+
+tasks.register('launcherRuntimeImage', Exec) {
+    outputs.file(launcherRuntimeDir.get().file('bin/java.exe'))
+    doFirst {
+        if (!jlinkExecutable.isFile()) {
+            throw new GradleException("jlink.exe was not found in ${jlinkExecutable.parent}. Use a JDK 21 installation.")
+        }
+        delete launcherRuntimeDir.get().asFile
+    }
+    commandLine jlinkExecutable.absolutePath,
+            '--add-modules', 'ALL-MODULE-PATH',
+            '--strip-debug',
+            '--no-header-files',
+            '--no-man-pages',
+            '--output', launcherRuntimeDir.get().asFile.absolutePath
+    doLast {
+        if (!launcherRuntimeDir.get().file('bin/java.exe').asFile.isFile()) {
+            throw new GradleException('The launcher runtime image does not contain bin/java.exe.')
+        }
+    }
+}
+
+tasks.register('prepareLauncherPackageInput', Sync) {
+    dependsOn tasks.named('launcherFatJar')
+    from {
+        tasks.named('launcherFatJar').get().archiveFile.get().asFile
+    }
+    into launcherInputDir
+}
+
+tasks.register('launcherAppImage', Exec) {
+    dependsOn tasks.named('prepareLauncherPackageInput'), tasks.named('launcherRuntimeImage')
+    doFirst {
+        delete launcherAppImageDir.get().asFile
+        launcherAppImageDir.get().asFile.mkdirs()
+    }
+    commandLine jpackageExecutable.absolutePath,
+            '--type', 'app-image',
+            '--name', 'DoorCLauncher',
+            '--app-version', project.version.toString(),
+            '--vendor', 'DoorC',
+            '--icon', launcherIcon.asFile.absolutePath,
+            '--input', launcherInputDir.get().asFile.absolutePath,
+            '--main-jar', tasks.named('launcherFatJar').get().archiveFile.get().asFile.name,
+            '--main-class', application.mainClass.get(),
+            '--runtime-image', launcherRuntimeDir.get().asFile.absolutePath,
+            '--java-options', "-Ddoorc.launcher.version=${launcherVersion}",
+            '--java-options', "-Ddoorc.launcher.githubRepo=${launcherReleaseRepo}",
+            '--dest', launcherAppImageDir.get().asFile.absolutePath
+}
+
+tasks.register('launcherExe', Exec) {
+    dependsOn tasks.named('prepareLauncherPackageInput'), tasks.named('launcherRuntimeImage')
+    doFirst {
+        if (!jpackageExecutable.isFile()) {
+            throw new GradleException("jpackage.exe was not found in ${jpackageExecutable.parent}. Use a JDK 21 installation.")
+        }
+        launcherPackageDir.get().asFile.mkdirs()
+    }
+    commandLine jpackageExecutable.absolutePath,
+            '--type', 'exe',
+            '--name', 'DoorCLauncher',
+            '--app-version', project.version.toString(),
+            '--vendor', 'DoorC',
+            '--icon', launcherIcon.asFile.absolutePath,
+            '--input', launcherInputDir.get().asFile.absolutePath,
+            '--main-jar', tasks.named('launcherFatJar').get().archiveFile.get().asFile.name,
+            '--main-class', application.mainClass.get(),
+            '--runtime-image', launcherRuntimeDir.get().asFile.absolutePath,
+            '--java-options', "-Ddoorc.launcher.version=${launcherVersion}",
+            '--java-options', "-Ddoorc.launcher.githubRepo=${launcherReleaseRepo}",
+            '--dest', launcherPackageDir.get().asFile.absolutePath,
+            '--win-upgrade-uuid', 'c6bd73f8-4423-482f-b20a-8bb4ff775a49',
+            '--win-dir-chooser',
+            '--win-menu',
+            '--win-menu-group', 'DoorC Launcher',
+            '--win-shortcut',
+            '--win-shortcut-prompt'
+}
